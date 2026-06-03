@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<style>
+
+#heart{
+  width: 820px;
+  height: auto;
+  position: relative;
+  margin: 10px auto;
+  transform: none;
+}
+
+@keyframes lungBreath{
+  0%{ transform: scale(1); }
+  50%{ transform: scale(calc(1.1 * var(--respDepth))); }
+  100%{ transform: scale(1); }
+}
+
+#lungs{
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lungBreath 3s infinite ease-in-out;
+}
+
+
+@keyframes diaphragmBreath{
+  0%{ transform: translateY(0); }
+  50%{ transform: translateY(calc(16px * var(--respDepth))); }
+  100%{ transform: translateY(0); }
+}
+
+#diaphragm{
+  animation: diaphragmBreath 3s infinite ease-in-out;
+}
+
+  #atria{
+  transform-origin: 95px 80px;
+  opacity: 0.35;
+}
+
+#ventricles{
+  transform-origin: 95px 145px;
+  opacity: 0.45;
+}
+
+#atriaBloodLayer,
+#ventBloodLayer{
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+:root{
+  --contract: 1;
+  --respDepth: 1;
+}
+
+body{
+  display: flex;
+  align-items: flex-start;
+  gap: 30px;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#controlPanel{
+  width: 180px;
+  padding: 20px;
+}
+
+button{
+  width: 100%;
+  margin: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #f7f7f7;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.08s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+button:active{
+  transform: scale(0.96);
+}
+
+button.is-on{
+  background: #dff7e7;
+  box-shadow: 0 0 0 2px rgba(70,180,110,0.25);
+}
+
+button.is-danger{
+  background: #ffe1e6;
+  box-shadow: 0 0 0 2px rgba(255,77,109,0.25);
+}
+
+button.is-warning{
+  background: #fff1bd;
+  box-shadow: 0 0 0 2px rgba(255,190,0,0.35);
+}
+
+button.flash-shock{
+  background: #ffe16a;
+  box-shadow: 0 0 14px rgba(255,190,0,0.85);
+}
+
+#canvasArea{
+  width: 840px;
+  display: flex;
+  justify-content: center;
+}
+
+#canvasArea svg{
+  width: 820px;
+  height: auto;
+}
+
+#ecgBox{
+  width: 180px;
+  margin: 8px 0;
+}
+
+#ecgSvg{
+  width: 180px;
+  height: 50px;
+  background: #fff5f7;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#bloodDirection{
+  min-height: 70px;
+  line-height: 1.4;
+}
+
+@media (max-width: 768px){
+  body{
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    overflow-x: hidden;
+  }
+
+  #controlPanel{
+    width: auto;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 8px;
+    font-size: 13px;
+  }
+
+  #controlPanel p{
+    margin: 2px 0;
+    line-height: 1.25;
+  }
+
+  #controlPanel button,
+  #controlPanel select,
+  #controlPanel input{
+    min-height: 36px;
+    font-size: 14px;
+  }
+
+  #shockResult,
+  #bloodDirection,
+  #hypoxia{
+    grid-column: 1 / -1;
+  }
+
+  #ecgSvg{
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 58px;
+  }
+
+  #canvasArea{
+    width: 100vw;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #canvasArea svg,
+  #heart{
+    width: min(100vw, 560px);
+    max-width: 100vw;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 430px){
+  #controlPanel{
+    grid-template-columns: 1fr 1fr;
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  button{
+    padding: 7px 6px;
+    border-radius: 9px;
+  }
+
+  #canvasArea svg,
+  #heart{
+    width: 108vw;
+    transform: translateX(-4vw);
+  }
+}
+
+</style>    
+<body>
+   <div id="controlPanel">
+<button id="breathBtn" onclick="toggleBreathing()">呼吸中樞：ON</button>
+
+<button id="cprBtn" onclick="startCPR()">插管＆CPR</button>
+<button id="shockBtn" onclick="defibrillate()">除顫⚡</button>
+<p>除顫能量：</p>
+<select id="shockEnergy">
+  <option value="50">50 J</option>
+  <option value="100">100 J</option>
+  <option value="150">150 J</option>
+  <option value="200">200 J</option>
+  <option value="360">360 J</option>
+</select>
+
+<p id="shockResult"></p>
+<p id="bpm">心跳:70</p>
+<p id="rr">呼吸頻率:12</p>
+<p id="cardiacPhase">階段: 起始</p>
+<p id="ecgText">ECG: -</p>
+<button onclick="resetSystem()">重置系統</button>
+<p id="hypoxia">缺氧倒數: -</p>
+
+<svg id="ecgSvg" viewBox="0 0 180 50">
+  <g id="ecgWave">
+  <polyline
+    points="0,30 20,30 28,25 36,30 55,30 62,34 68,10 74,42 82,30 115,30 132,22 150,30 180,30"
+    fill="none"
+    stroke="#ff4d6d"
+    stroke-width="3"
+    stroke-linejoin="round"
+    stroke-linecap="round">
+  </polyline>
+
+  <polyline
+    points="0,30 20,30 28,25 36,30 55,30 62,34 68,10 74,42 82,30 115,30 132,22 150,30 180,30"
+    transform="translate(180,0)"
+    fill="none"
+    stroke="#ff4d6d"
+    stroke-width="3"
+    stroke-linejoin="round"
+    stroke-linecap="round">
+  </polyline>
+</g>
+
+<line id="ecgFlat"
+  x1="0" y1="30" x2="180" y2="30"
+  stroke="#ff4d6d"
+  stroke-width="3"
+  stroke-linecap="round"
+  style="opacity:0">
+</line>
+
+<polyline id="ecgVF"
+  points="
+  0,30 10,20 20,35 30,15 40,40
+  50,18 60,36 70,22 80,38 90,20
+  100,35 110,15 120,40 130,18
+  140,36 150,22 160,38 170,20 180,30"
+  fill="none"
+  stroke="#ff4d6d"
+  stroke-width="3"
+  style="opacity:0">
+</polyline>
+
+<polyline id="ecgCPR"
+  points="
+  0,30 8,10 16,38 24,14 32,40
+  40,12 48,39 56,13 64,37 72,15
+  80,40 88,12 96,38 104,14 112,39
+  120,11 128,40 136,13 144,38 152,16
+  160,39 168,14 176,36 180,30"
+  fill="none"
+  stroke="#ff4d6d"
+  stroke-width="3"
+  stroke-linejoin="round"
+  stroke-linecap="round"
+  style="opacity:0">
+</polyline>
+
+<g id="shockFlash" style="opacity:0">
+  <line x1="90" y1="4" x2="90" y2="46"
+        stroke="#ff4d6d"
+        stroke-width="5"
+        stroke-linecap="round"/>
+  <text x="98" y="22"
+        font-size="20"
+        fill="#ff4d6d"
+        font-weight="bold">⚡</text>
+</g>
+
+</svg>
+
+<p id="bloodDirection">血流方向: -</p>
+<p id="NERVES">迷走神經:50</p>
+<input id="vagusSlider" type="range" min="0" max="100" value="50" oninput="changeNERVES(this.value)">
+<p id="SYMP">交感神經:50</p>
+<input id="sympSlider" type="range" min="0" max="100" value="50" oninput="changeSYMP(this.value)">
+
+</div>
+
+<div id="canvasArea">
+<svg id="heart" viewBox="5 18 330 310">
+
+  
+
+  <g id="lungs">
+    <image id="lungsImage"
+           href="lungs.png"
+           x="-8"
+           y="5"
+           width="335"
+           height="310"
+           opacity="0.82" />
+  </g>
+
+
+<path id="diaphragm"
+d="M42 270 
+   C130 300, 215 300, 305 270"
+fill="none"
+stroke="#d7a6ff"
+stroke-width="9"
+stroke-linecap="round"></path>
+
+<g id="brainArea" transform="translate(280, 40)">
+
+  <g id="brainstem">
+    <path d="
+      M0 0
+      C-10 15, -5 35, 5 45
+      C15 35, 20 15, 10 0
+      Z"
+      fill="#c7b8ff"
+      opacity="0.9"></path>
+  </g>
+
+  <path id="vagusPath"
+        d="M5 45 C0 80, 0 120, 5 160"
+        fill="none"
+        stroke="#7b61ff"
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-dasharray="6 5"></path>
+
+  <circle r="3" fill="#7b61ff">
+    <animateMotion
+      dur="1.5s"
+      repeatCount="indefinite"
+      path="M5 45 C0 80, 0 120, 5 160"/>
+  </circle>
+
+</g>
+
+<g id="heartGroup" transform="translate(60, 70) scale(0.98) rotate(-10)">
+
+  <g id="Bloodflows" transform="translate(100,133)">
+
+  <path id="atrialToVentricleFlow"
+      d="M-12 -30 C-5 -10, 2 0, 8 18"
+      fill="none"
+      stroke="rgba(190,0,0,0.75)"
+      stroke-width="8"
+      stroke-linecap="round"
+      opacity="0"
+      stroke-dasharray="18 14">
+</path>
+
+  </g>
+
+  <g id="atriaImageLayer" transform="translate(100,133)">
+  <image href="atria_refined.png"
+         x="-95"
+         y="-105"
+         width="190"
+         height="210"
+         opacity="0.95"/>
+</g>
+
+  <g id="atriaBloodLayer"  transform="translate(100,133) scale(1) ">
+  <ellipse
+  cx="-10"
+
+    cy="-20"
+
+    rx="28"
+
+    ry="20"
+
+    fill="rgba(180,0,0,0.45)">
+  </ellipse>
+
+  </g>
+
+<g id="ventBloodLayer" transform="translate(100,120) scale(1) ">
+<ellipse
+
+cx="8"
+
+cy="8"
+
+rx="32"
+
+ry="36"
+
+fill="rgba(180,0,0,0.45)">
+
+</ellipse>
+</g>
+
+<g id="ventImageLayer" transform="translate(100,120)">
+  <image href="ventricles.png"
+         x="-95"
+         y="-105"
+         width="190"
+         height="210"
+         opacity="0.95"/>
+</g>
+
+<defs>
+  <radialGradient id="heartGrad" cx="50%" cy="40%" r="60%">
+    <stop offset="0%" stop-color="#d94a3a"/>
+    <stop offset="60%" stop-color="#b72a22"/>
+    <stop offset="100%" stop-color="#6e1712"/>
+  </radialGradient>
+</defs>
+
+</g>
+</svg>
+</div>
+
+<script>
+  const atriaBloodLayer = document.getElementById("atriaBloodLayer");
+  const energySelect = document.getElementById("shockEnergy");
+  const shockText = document.getElementById("shockResult");
+  const breathBtn = document.getElementById("breathBtn");
+  const cprBtn = document.getElementById("cprBtn");
+  const shockBtn = document.getElementById("shockBtn");
+  let lastUIUpdate = 0;
+  let lastFlowDur = 0;
+  let lastBreathDur = 0;
+  let vfActive = false;
+  let shockCount = 0;
+  const bpmText = document.getElementById("bpm");
+  const rrText = document.getElementById("rr");
+  const phaseText = document.getElementById("cardiacPhase");
+  const ecgTextEl = document.getElementById("ecgText");
+  const hypoxiaText = document.getElementById("hypoxia");
+  const bloodText = document.getElementById("bloodDirection");
+  const atriaEl = document.getElementById("atria");
+  const ventEl = document.getElementById("ventricles");
+  const lungsEl = document.getElementById("lungs");
+  const diaphragmEl = document.getElementById("diaphragm");
+  const ecgWave = document.getElementById("ecgWave");
+  const shockFlash = document.getElementById("shockFlash");
+  const nervesText = document.getElementById("NERVES");
+  const sympText = document.getElementById("SYMP");
+  const vagusSlider = document.getElementById("vagusSlider");
+  const sympSlider = document.getElementById("sympSlider");
+  const vagusAnim = document.querySelector("#brainArea animateMotion");
+  const bloodFlows = document.querySelectorAll("#heartGroup animateMotion");
+  const atriaImageLayer = document.getElementById("atriaImageLayer");
+  const ventImageLayer = document.getElementById("ventImageLayer");
+  const ventBloodLayer = document.getElementById("ventBloodLayer");
+  const atrialToVentricleFlow = document.getElementById("atrialToVentricleFlow");
+
+    let lastAtriaImgScale = 1;
+    let lastVentImgScale = 1;
+    let vagus = 50;
+    let sympathetic = 50;
+    let targetVagus = 50;
+    let targetSymp = 50;
+    let baseBPM = 70;
+    let respiratoryDrive = true;
+    let respDrive = 1;
+    let hypoxiaTimer = 0;
+    let hypoxiaActive = false;
+    let recoveryActive = false;
+    let hypoxiaStartBPM = 70;
+    let lastBloodDirection = "";
+    let lastDepth = 1;
+    let lastT = 0;
+    let lastRespRate = 0;
+    let lastAtria = 1;
+    let lastVent = 1;
+    let phaseAcc = 0;
+    let lastTime = performance.now();
+    let cprActive = false;
+    let cprTimer = 0;
+    let rescueFailed = false;
+    let lastComputedBPM = 70;
+    let shockFlashTimer = 0;
+
+function getShockSuccessRate(energy){
+  let successRate = 0.25;
+
+  if (energy === 100) successRate = 0.40;
+  if (energy === 150) successRate = 0.55;
+  if (energy === 200) successRate = 0.70;
+  if (energy === 360) successRate = 0.85;
+
+  successRate -= shockCount * 0.10;
+  return Math.max(0.05, successRate);
+}
+
+function resetShockEnergy(){
+  energySelect.value = "50";
+}
+
+function advanceShockEnergy(){
+  const energySteps = [50, 100, 150, 200, 360];
+  const currentEnergy = Number(energySelect.value);
+  const currentIndex = energySteps.indexOf(currentEnergy);
+  const nextIndex = Math.min(currentIndex + 1, energySteps.length - 1);
+  energySelect.value = String(energySteps[nextIndex]);
+}
+
+function triggerShockFlash(){
+  shockFlashTimer = 0.25;
+  shockFlash.style.opacity = "1";
+}
+
+function flashShockButton(){
+  shockBtn.classList.add("flash-shock");
+  setTimeout(() => {
+    shockBtn.classList.remove("flash-shock");
+  }, 220);
+}
+
+function updateButtonStates(){
+  if (respiratoryDrive){
+    breathBtn.textContent = "呼吸中樞：ON";
+    breathBtn.classList.add("is-on");
+    breathBtn.classList.remove("is-danger");
+  }
+  else{
+    breathBtn.textContent = "呼吸中樞：OFF";
+    breathBtn.classList.add("is-danger");
+    breathBtn.classList.remove("is-on");
+  }
+
+  if (rescueFailed){
+    cprBtn.textContent = "搶救失敗";
+    cprBtn.classList.add("is-danger");
+    cprBtn.classList.remove("is-warning", "is-on");
+  }
+  else if (recoveryActive){
+    cprBtn.textContent = "恢復中";
+    cprBtn.classList.add("is-on");
+    cprBtn.classList.remove("is-warning", "is-danger");
+  }
+  else if (cprActive){
+    cprBtn.textContent = "CPR進行中";
+    cprBtn.classList.add("is-warning");
+    cprBtn.classList.remove("is-danger", "is-on");
+  }
+  else{
+    cprBtn.textContent = "插管＆CPR";
+    cprBtn.classList.remove("is-warning", "is-danger", "is-on");
+  }
+
+  if (vfActive && !cprActive && !rescueFailed){
+    shockBtn.classList.add("is-danger");
+  }
+  else{
+    shockBtn.classList.remove("is-danger");
+  }
+}
+
+function changeNERVES(value){
+  targetVagus = Number(value);
+  nervesText.textContent = "迷走神經：" + value;
+}
+
+function changeSYMP(value){
+  targetSymp = Number(value);
+  sympText.textContent = "交感神經：" + value;
+}
+
+function updateBody(){
+  updateButtonStates();
+  if (shockFlashTimer > 0){
+    shockFlashTimer -= 1 / 60;
+    shockFlash.style.opacity = shockFlashTimer > 0 ? "1" : "0";
+  }
+
+  if (rescueFailed){
+  vfActive = false;
+  cprActive = false;
+  hypoxiaActive = false;
+  recoveryActive = false;
+  respiratoryDrive = false;
+  updateButtonStates();
+
+  bpmText.textContent = "心跳:停止";
+  phaseText.textContent = "階段: 搶救失敗";
+  ecgTextEl.textContent = "ECG: flat";
+  hypoxiaText.textContent = "搶救失敗";
+  bloodText.textContent = "血流方向: 停止";
+  ecgWave.style.opacity = "0";
+  document.getElementById("ecgVF").style.opacity = "0";
+  document.getElementById("ecgCPR").style.opacity = "0";
+  document.getElementById("ecgFlat").style.opacity = "1";
+  shockFlash.style.opacity = "0";
+  lungsEl.style.animationPlayState = "paused";
+  diaphragmEl.style.animationPlayState = "paused";
+  vagusAnim.parentElement.style.opacity = "0";
+  atrialToVentricleFlow.style.opacity = "0";
+  return;
+}
+
+if (vfActive){
+  cprTimer -= 1 / 60;
+  if (cprTimer < 0) cprTimer = 0;
+
+  if (cprActive){
+    hypoxiaText.textContent = "CPR中：剩餘 " + cprTimer.toFixed(1) + "s";
+  }
+  else{
+    hypoxiaText.textContent = "VF中：尚未啟動急救，剩餘 " + cprTimer.toFixed(1) + "s";
+  }
+
+  if (cprTimer === 0){
+    rescueFailed = true;
+    return;
+  }
+
+  bpmText.textContent = "心跳: VF";
+  phaseText.textContent = cprActive ? "階段: CPR急救中" : "階段: 心室顫動";
+  ecgTextEl.textContent = cprActive ? "ECG: CPR artifact" : "ECG: VF";
+
+  ecgWave.style.opacity = "0";
+  document.getElementById("ecgFlat").style.opacity = "0";
+  document.getElementById("ecgVF").style.opacity = cprActive ? "0" : "1";
+  document.getElementById("ecgCPR").style.opacity = cprActive ? "1" : "0";
+
+  if (atriaEl) atriaEl.style.transform = "scale(1)";
+  if (ventEl) ventEl.style.transform = "scale(1)";
+
+  bloodText.textContent = "血流方向: 無效循環";
+  atrialToVentricleFlow.style.opacity = "0";
+  bloodFlows.forEach(flow => {
+  flow.parentElement.style.opacity = "0";
+});
+  const oldBloodPath = document.getElementById("bloodPath");
+  if (oldBloodPath) oldBloodPath.style.opacity = "0";
+  if (cprActive){
+    const cprPulse = 1 + 0.06 * Math.sin(performance.now() / 90);
+    ventImageLayer.setAttribute("transform", "translate(100,120) scale(" + cprPulse + ")");
+    ventBloodLayer.setAttribute("transform", "translate(100,120) scale(" + cprPulse + ")");
+  }
+lastTime = performance.now();
+  return;
+}
+
+  vagus += (targetVagus - vagus) * 0.25;
+sympathetic += (targetSymp - sympathetic) * 0.25;
+  if (hypoxiaActive){
+  hypoxiaTimer -= 1/60;
+  if (hypoxiaTimer < 0) hypoxiaTimer = 0;
+
+  let progress = 1 - (hypoxiaTimer / 5);
+
+  if (progress < 0.4){
+    baseBPM = hypoxiaStartBPM + 40 * (progress / 0.4);
+  }
+  else{
+    let fall = (progress - 0.4) / 0.6;
+    baseBPM = (hypoxiaStartBPM + 40) * (1 - fall);
+  }
+
+  hypoxiaText.textContent = "缺氧倒數: " + hypoxiaTimer.toFixed(1) + "s";
+
+  if (hypoxiaTimer === 0){
+  vfActive = true;
+  cprActive = false;
+  cprTimer = 10;
+  shockCount = 0;
+  resetShockEnergy();
+  hypoxiaActive = false;
+  respiratoryDrive = false;
+  shockText.textContent = "進入VF：請先啟動急救模式";
+}
+}
+else{
+  if (cprActive){
+    hypoxiaText.textContent = "CPR中：剩餘 " + cprTimer.toFixed(1) + "s";
+  }
+  else if (recoveryActive){
+    hypoxiaText.textContent = "恢復中";
+  }
+  else{
+    hypoxiaText.textContent = "缺氧倒數: -";
+  }
+}
+
+
+if (recoveryActive){
+  baseBPM += (70 - baseBPM) * 0.03;
+  targetVagus = 50;
+  targetSymp = 50;
+  vagusSlider.value = 50;
+  sympSlider.value = 50;
+  nervesText.textContent = "迷走神經:50";
+  sympText.textContent = "交感神經:50";
+
+  if (Math.abs(baseBPM - 70) < 0.5){
+  baseBPM = 70;
+  recoveryActive = false;
+  cprActive = false;
+}
+}
+
+    let vagusEffect = (vagus - 50) * 0.4;
+    let sympEffect = (sympathetic - 50) * 0.4;
+    let bpm = hypoxiaActive ? baseBPM : baseBPM - vagusEffect + sympEffect;
+    lastComputedBPM = bpm;
+
+    if (bpm <= 0){
+  bpmText.textContent = "心跳:停止";
+  phaseText.textContent = "階段: 停止";
+  ecgTextEl.textContent = "ECG: flat";
+  bloodText.textContent = "血流方向: 停止";
+  if (atriaEl) atriaEl.style.transform = "scale(1)";
+  if (ventEl) ventEl.style.transform = "scale(1)";
+  vagusAnim.setAttribute("dur", "0s");
+  ecgWave.setAttribute("transform", "translate(0,0)");
+  ecgWave.style.opacity = "0";
+document.getElementById("ecgFlat").style.opacity = "1";
+document.getElementById("ecgVF").style.opacity = "0";
+document.getElementById("ecgCPR").style.opacity = "0";
+  bloodFlows.forEach(flow => {
+  flow.parentElement.style.opacity = "0";
+});
+
+const oldBloodPath = document.getElementById("bloodPath");
+if (oldBloodPath) oldBloodPath.style.opacity = "0";
+lastTime = performance.now();
+
+  return;
+}else{
+  vagusAnim.setAttribute("dur", "1.5s");
+  bloodFlows.forEach(flow => {
+  flow.parentElement.style.opacity = "1";
+});
+
+const oldBloodPath = document.getElementById("bloodPath");
+if (oldBloodPath) oldBloodPath.style.opacity = "1";
+ecgWave.style.opacity = "1";
+document.getElementById("ecgFlat").style.opacity = "0";
+document.getElementById("ecgCPR").style.opacity = "0";
+
+}
+
+    let autonomicTone = (sympathetic - 50) - (vagus - 50);
+    let contract = 1 + autonomicTone * 0.003;
+    contract = Math.max(0.75, Math.min(1.25, contract));
+    document.documentElement.style.setProperty("--contract", contract);
+    let beat = 60 / bpm;
+let systoleFlow = beat * 0.55;
+
+if (Math.abs(systoleFlow - lastFlowDur) > 0.05){
+  bloodFlows.forEach(flow => {
+    flow.setAttribute("dur", systoleFlow + "s");
+  });
+  lastFlowDur = systoleFlow;
+}
+
+let respRate = 12 + autonomicTone * 0.06;
+respDrive = 1 + autonomicTone * 0.008;
+        respDrive = Math.max(0.6, Math.min(1.5, respDrive));
+    let breathDuration = 60 / respRate;
+    let beatDuration = 60 / bpm;
+    let now = performance.now();
+let dt = (now - lastTime) / 1000;
+lastTime = now;
+
+phaseAcc += dt / beatDuration;
+phaseAcc %= 1;
+
+let t = phaseAcc;
+
+let atriaImgScale = 1;
+let ventImgScale = 1;
+
+if (t < 0.2){
+  let progress = t / 0.2;
+  let pulse = Math.sin(progress * Math.PI);
+
+  atriaImgScale = 1 - 0.08 * pulse;
+  ventImgScale = 1 + 0.05 * pulse;
+  atrialToVentricleFlow.style.opacity = "1";
+
+let flowOffset = -(progress * 40);
+
+atrialToVentricleFlow.style.strokeDashoffset =
+flowOffset;
+}
+
+else if (t >= 0.2 && t < 0.3){
+  ventImgScale = 1.03;
+}
+
+else if (t >= 0.3 && t < 0.6){
+  let progress = (t - 0.3) / 0.3;
+  let pulse = Math.sin(progress * Math.PI);
+
+  ventImgScale = 1 - 0.10 * contract * pulse;
+}
+
+else{
+  atriaImgScale = 1;
+  ventImgScale = 1;
+  atrialToVentricleFlow.style.opacity = "0";
+}
+
+if (Math.abs(atriaImgScale - lastAtriaImgScale) > 0.005){
+  atriaImageLayer.setAttribute(
+    "transform",
+    "translate(100,133) scale(" + atriaImgScale + ")"
+  );
+
+  atriaBloodLayer.setAttribute(
+    "transform",
+    "translate(100,133) scale(" + atriaImgScale + ")"
+  );
+
+  lastAtriaImgScale = atriaImgScale;
+}
+
+if (Math.abs(ventImgScale - lastVentImgScale) > 0.005){
+  ventImageLayer.setAttribute(
+    "transform",
+    "translate(100,120) scale(" + ventImgScale + ")"
+  );
+
+  ventBloodLayer.setAttribute(
+    "transform",
+    "translate(100,120) scale(" + ventImgScale + ")"
+  );
+
+  lastVentImgScale = ventImgScale;
+}
+
+    let phase = "";
+let ecg = "-";
+
+
+if (t < 0.2){
+  phase = "心房收縮";
+  ecg = "P";
+}
+else if (t < 0.3){
+  phase = "房室節延遲";
+  ecg = "PR";
+}
+else if (t < 0.6){
+  phase = "心室收縮";
+  ecg = "QRS";
+}
+else if (t < 0.8){
+  phase = "舒張";
+  ecg = "T";
+}
+else{
+  phase = "充填期";
+}
+
+let bloodDirection = "-";
+if (phase === "心房收縮"){
+  bloodDirection = "心房 → 心室";
+}
+else if (phase === "房室節延遲"){
+  bloodDirection = "心室填充完成";
+}
+else if (phase === "心室收縮"){
+  bloodDirection = "心室 → 動脈";
+}
+else if (phase === "舒張"){
+  bloodDirection = "動脈維持流動";
+}
+else{
+  bloodDirection = "靜脈 → 心房 → 心室";
+}
+
+if (bloodDirection !== lastBloodDirection){
+  bloodText.textContent = "血流方向: " + bloodDirection;
+  lastBloodDirection = bloodDirection;
+}
+
+let atriaScale = 1;
+let ventricleScale = 1;
+
+if (t < 0.2){
+  let progress = t / 0.2;
+  atriaScale = 1 + 0.15 * Math.sin(progress * Math.PI);
+}
+
+if (t >= 0.3 && t < 0.6){
+  let progress = (t - 0.3) / 0.3;
+  ventricleScale = 1 + 0.25 * contract * Math.sin(progress * Math.PI);
+}
+
+if (t >= 0.6 && t < 0.8){
+  let progress = (t - 0.6) / 0.2;
+  ventricleScale = 1 - 0.04 * Math.sin(progress * Math.PI);
+}
+
+let ecgMove = -180 * t;
+if (Math.abs(t - lastT) > 0.01){
+  ecgWave.setAttribute("transform", "translate(" + ecgMove + ",0)");
+  lastT = t;
+}
+
+if (atriaEl && Math.abs(atriaScale - lastAtria) > 0.01){
+  atriaEl.style.transform = "scale(" + atriaScale + ")";
+  lastAtria = atriaScale;
+}
+
+if (ventEl && Math.abs(ventricleScale - lastVent) > 0.01){
+  ventEl.style.transform = "scale(" + ventricleScale + ")";
+  lastVent = ventricleScale;
+}
+
+    if (respiratoryDrive){
+lungsEl.style.animationPlayState = "running";
+vagusAnim.parentElement.style.opacity = "1";
+if (Math.abs(breathDuration - lastBreathDur) > 0.1){
+  lungsEl.style.animationDuration = breathDuration + "s";
+  diaphragmEl.style.animationDuration = breathDuration + "s";
+  lastBreathDur = breathDuration;
+}
+diaphragmEl.style.animationPlayState = "running";
+if (Math.abs(respRate - lastRespRate) > 0.5){
+  rrText.textContent = "呼吸頻率:" + Math.round(respRate);
+  lastRespRate = respRate;
+}
+  let depth = Math.max(0.6, respDrive);
+  if (Math.abs(depth - lastDepth) > 0.02){
+  document.documentElement.style.setProperty("--respDepth", depth);
+  lastDepth = depth;
+}
+}else{
+lungsEl.style.animationPlayState = "paused";
+diaphragmEl.style.animationPlayState = "paused";
+rrText.textContent = "呼吸頻率:停止";
+vagusAnim.parentElement.style.opacity = "0";
+}
+
+let nowMs = performance.now();
+if (nowMs - lastUIUpdate > 100){
+  bpmText.textContent = "心跳:" + Math.round(bpm);
+  phaseText.textContent = "階段: " + phase;
+  ecgTextEl.textContent = "ECG: " + ecg;
+  lastUIUpdate = nowMs;
+}
+}
+function loop(){
+  updateBody();
+  requestAnimationFrame(loop);
+}
+loop();
+function toggleBreathing(){
+  if (vfActive || cprActive || rescueFailed){
+    shockText.textContent = "急救流程中無法切換呼吸中樞";
+    return;
+  }
+
+  respiratoryDrive = !respiratoryDrive;
+
+  if (!respiratoryDrive){
+    hypoxiaActive = true;
+    recoveryActive = false;
+    hypoxiaTimer = 5;
+
+    vagusSlider.disabled = true;
+    sympSlider.disabled = true;
+
+    let vagusEffect = (vagus - 50) * 0.4;
+    let sympEffect = (sympathetic - 50) * 0.4;
+    hypoxiaStartBPM = baseBPM - vagusEffect + sympEffect;
+  }
+  else {
+    hypoxiaActive = false;
+    recoveryActive = true;
+
+    vagusSlider.disabled = false;
+    sympSlider.disabled = false;
+  }
+
+  updateBody();
+}
+
+function startCPR(){
+  const noEffectiveHeartbeat = vfActive || lastComputedBPM <= 0 || rescueFailed;
+
+  if (!noEffectiveHeartbeat){
+    hypoxiaText.textContent = "尚未達急救條件";
+    shockText.textContent = "急救模式需等到無有效循環時才能啟動";
+    return;
+  }
+
+  if (rescueFailed){
+    shockText.textContent = "搶救失敗，請重置系統";
+    return;
+  }
+
+  hypoxiaActive = false;
+  recoveryActive = false;
+  respiratoryDrive = false;
+  cprActive = true;
+  cprTimer = 10;
+  resetShockEnergy();
+
+  hypoxiaText.textContent = "CPR中：剩餘 10.0s";
+  shockText.textContent = "電擊器已啟動，能量從50J開始";
+}
+
+function resetSystem(){
+  location.reload();
+}
+
+function defibrillate(){
+  if (!vfActive){
+    shockText.textContent = "無需除顫：目前不是VF";
+    return;
+  }
+
+  if (!cprActive){
+    shockText.textContent = "急救模式未啟動，無法電擊";
+    return;
+  }
+
+  let energy = Number(energySelect.value);
+  let successRate = getShockSuccessRate(energy);
+  let displayedRate = Math.round(successRate * 100);
+  let roll = Math.random();
+
+  triggerShockFlash();
+  flashShockButton();
+  shockCount++;
+
+  if (roll < successRate){
+    vfActive = false;
+    hypoxiaActive = false;
+    recoveryActive = true;
+    cprActive = false;
+    respiratoryDrive = true;
+
+    baseBPM = 40;
+    lastComputedBPM = 40;
+    lastTime = performance.now();
+
+    document.getElementById("ecgVF").style.opacity = "0";
+    document.getElementById("ecgCPR").style.opacity = "0";
+    document.getElementById("ecgFlat").style.opacity = "0";
+    ecgWave.style.opacity = "1";
+    atrialToVentricleFlow.style.opacity = "0";
+
+    bloodFlows.forEach(flow => {
+      flow.parentElement.style.opacity = "1";
+    });
+
+    const oldBloodPath = document.getElementById("bloodPath");
+    if (oldBloodPath) oldBloodPath.style.opacity = "1";
+
+    vagusSlider.disabled = false;
+    sympSlider.disabled = false;
+    resetShockEnergy();
+
+    shockText.textContent =
+      `⚡除顫成功（${energy}J，成功率 ${displayedRate}%）`;
+  }
+  else{
+    advanceShockEnergy();
+    shockText.textContent =
+      `⚡除顫無效（${energy}J，成功率 ${displayedRate}%），多次電擊成功率下降，自動升至 ${energySelect.value}J`;
+  }
+}
+
+
+</script>
+</body>
+</html>
